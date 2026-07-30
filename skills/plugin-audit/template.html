@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Code Plugin Audit — installed, enabled, and the full marketplace catalog</title>
+<style>
+/* Token palette per toolkit html-conventions.md, extended with the surface /
+   chip / shadow / state tokens this app-store layout needs. Both branches stay
+   in sync; every component rule below reads a var(), never a raw hex. */
+:root{
+  color-scheme: light dark;
+  --bg:#f5f5f7; --surface:#ffffff; --surface-2:#fafafa;
+  --fg:#1f1f1f; --fg-muted:#6e6e6e; --heading-fg:#1a1a1a;
+  --accent:#1976d2; --border:#e0e0e0; --border-soft:#ececec;
+  --code-bg:#f0f0f0; --code-fg:#6e3700; --pre-bg:#fafafa; --aside-bg:#f5f5f5;
+  --success:#2e7d32; --warning:#9a5b00; --error:#d32f2f;
+  --state-active:#2e7d32; --state-disabled:#6e6e6e; --state-absent:#8a8a8a;
+  --chip-bg:#eceef1; --chip-fg:#3a3a3a;
+  --shadow:0 1px 2px rgba(0,0,0,.06), 0 6px 18px rgba(0,0,0,.05);
+  --shadow-lg:0 2px 6px rgba(0,0,0,.08), 0 18px 44px rgba(0,0,0,.12);
+  --icon-l:88%; --icon-fg-l:32%;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#141414; --surface:#1e1e1e; --surface-2:#242424;
+    --fg:#cccccc; --fg-muted:#9e9e9e; --heading-fg:#e8e8e8;
+    --accent:#4dabf7; --border:#2a2a2a; --border-soft:#262626;
+    --code-bg:#2a2a2a; --code-fg:#f0e8d8; --pre-bg:#161616; --aside-bg:#242424;
+    --success:#66bb6a; --warning:#f0c674; --error:#ff7676;
+    --state-active:#66bb6a; --state-disabled:#9e9e9e; --state-absent:#8a8a8a;
+    --chip-bg:#2c2c2c; --chip-fg:#c8c8c8;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.35);
+    --shadow-lg:0 2px 6px rgba(0,0,0,.5), 0 18px 44px rgba(0,0,0,.55);
+    --icon-l:22%; --icon-fg-l:74%;
+  }
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:15px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{color:var(--heading-fg); margin:0}
+a{color:var(--accent)}
+code{background:var(--code-bg); color:var(--code-fg); padding:.12em .38em; border-radius:5px; font-size:.88em}
+
+/* ---------- chrome ---------- */
+header.topbar{
+  position:sticky; top:0; z-index:20; background:var(--surface);
+  border-bottom:1px solid var(--border);
+}
+.topbar-in{max-width:1180px; margin:0 auto; padding:.7rem 1.1rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap}
+.brand{display:flex; align-items:center; gap:.6rem; font-weight:650; font-size:1.02rem; letter-spacing:-.01em}
+.brand .glyph{
+  width:28px; height:28px; border-radius:8px; display:grid; place-items:center;
+  background:var(--accent); color:var(--surface); font-size:15px; font-weight:800;
+}
+.brand small{color:var(--fg-muted); font-weight:500; font-size:.75rem; display:block}
+.search{flex:1; min-width:200px; position:relative}
+.search input{
+  width:100%; padding:.5rem .8rem .5rem 2rem; border-radius:9px; font-size:.92rem;
+  border:1px solid var(--border); background:var(--surface-2); color:var(--fg);
+}
+.search input:focus{outline:2px solid var(--accent); outline-offset:-1px}
+.search::before{content:"\2315"; position:absolute; left:.65rem; top:50%; transform:translateY(-52%); color:var(--fg-muted); font-size:1.05rem}
+.counts{color:var(--fg-muted); font-size:.8rem; white-space:nowrap}
+.counts b{color:var(--heading-fg)}
+
+main{max-width:1180px; margin:0 auto; padding:1.4rem 1.1rem 4rem}
+
+/* ---------- shelves ---------- */
+.shelf-head{display:flex; align-items:baseline; justify-content:space-between; gap:1rem; margin:2rem 0 .85rem}
+.shelf-head:first-child{margin-top:.4rem}
+.shelf-head h2{font-size:1.28rem; letter-spacing:-.02em}
+.shelf-head p{margin:.2rem 0 0; color:var(--fg-muted); font-size:.85rem; max-width:70ch}
+.eyebrow{color:var(--accent); font-size:.72rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase; margin:0 0 .18rem}
+
+.rail{display:grid; grid-auto-flow:column; grid-auto-columns:minmax(300px,1fr); gap:.85rem; overflow-x:auto; padding-bottom:.6rem; scroll-snap-type:x mandatory}
+.rail::-webkit-scrollbar{height:8px}
+.rail::-webkit-scrollbar-thumb{background:var(--border); border-radius:9px}
+
+.finding{
+  scroll-snap-align:start; text-align:left; cursor:pointer; font:inherit; color:inherit;
+  background:var(--surface); border:1px solid var(--border); border-radius:15px; padding:1rem;
+  box-shadow:var(--shadow); display:flex; flex-direction:column; gap:.5rem;
+  transition:transform .14s ease, box-shadow .14s ease;
+}
+.finding:hover{transform:translateY(-2px); box-shadow:var(--shadow-lg)}
+.finding .big{font-size:2rem; font-weight:750; letter-spacing:-.03em; line-height:1; color:var(--heading-fg)}
+.finding .big.unit{font-size:1.4rem}
+.finding h3{font-size:.95rem}
+.finding p{margin:0; font-size:.83rem; color:var(--fg-muted)}
+.finding[data-tone="active"] .big{color:var(--state-active)}
+.finding[data-tone="warn"] .big{color:var(--warning)}
+.finding[data-tone="muted"] .big{color:var(--state-disabled)}
+
+/* ---------- icon tiles ---------- */
+.tile{
+  flex:0 0 auto; border-radius:24%; display:grid; place-items:center; font-weight:800;
+  letter-spacing:-.04em; text-transform:uppercase; user-select:none;
+  background:hsl(var(--h) 62% var(--icon-l)); color:hsl(var(--h) 72% var(--icon-fg-l));
+  box-shadow:inset 0 0 0 1px hsl(var(--h) 40% 50% / .18);
+}
+.tile.md{width:46px; height:46px; font-size:17px}
+.tile.xl{width:70px; height:70px; font-size:27px}
+
+/* ---------- marketplace table ---------- */
+.tablewrap{overflow-x:auto; border:1px solid var(--border); border-radius:13px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:.85rem; min-width:640px}
+th,td{text-align:left; padding:.5rem .8rem; border-bottom:1px solid var(--border-soft); white-space:nowrap}
+th{color:var(--fg-muted); font-weight:600; font-size:.78rem; text-transform:uppercase; letter-spacing:.05em}
+tbody tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right; font-variant-numeric:tabular-nums}
+
+/* ---------- filters ---------- */
+.filters{position:sticky; top:53px; z-index:15; background:var(--bg); padding:.55rem 0 .7rem; border-bottom:1px solid var(--border-soft)}
+.chips{display:flex; gap:.4rem; overflow-x:auto; padding-bottom:.35rem}
+.chip{
+  flex:0 0 auto; cursor:pointer; font:inherit; font-size:.8rem; font-weight:550;
+  padding:.34rem .72rem; border-radius:999px; border:1px solid transparent;
+  background:var(--chip-bg); color:var(--chip-fg); white-space:nowrap;
+}
+.chip:hover{border-color:var(--border)}
+.chip[aria-pressed="true"]{background:var(--accent); color:var(--surface)}
+.chip .n{opacity:.65; font-weight:500; margin-left:.32rem}
+.toolrow{display:flex; gap:.9rem; align-items:center; flex-wrap:wrap; margin-top:.5rem; font-size:.82rem; color:var(--fg-muted)}
+.toolrow label{display:flex; align-items:center; gap:.35rem; cursor:pointer}
+.toolrow select{font:inherit; font-size:.82rem; padding:.2rem .4rem; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--fg)}
+.viewnote{display:flex; gap:.6rem; align-items:center; margin-top:.55rem; font-size:.82rem; color:var(--fg-muted)}
+
+/* ---------- grid ---------- */
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(288px,1fr)); gap:.8rem; margin-top:1.1rem}
+.card{
+  text-align:left; cursor:pointer; font:inherit; color:inherit;
+  background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:.85rem;
+  display:flex; gap:.75rem; align-items:flex-start; transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.card:hover{transform:translateY(-2px); box-shadow:var(--shadow); border-color:var(--accent)}
+.card .body{min-width:0; flex:1}
+.card h3{font-size:.95rem; letter-spacing:-.01em; display:flex; align-items:center; gap:.35rem; flex-wrap:wrap}
+.card .by{color:var(--fg-muted); font-size:.76rem; margin:.1rem 0 .35rem}
+.card p{margin:0; font-size:.825rem; color:var(--fg-muted); display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+.pills{display:flex; gap:.3rem; flex-wrap:wrap; margin-top:.5rem}
+.pill{font-size:.68rem; font-weight:600; padding:.16rem .45rem; border-radius:6px; background:var(--chip-bg); color:var(--chip-fg)}
+.pill.on{background:var(--aside-bg); color:var(--state-active); box-shadow:inset 0 0 0 1px var(--state-active)}
+.pill.off{background:var(--aside-bg); color:var(--state-disabled); box-shadow:inset 0 0 0 1px var(--border)}
+.pill.ghost{background:var(--aside-bg); color:var(--warning); box-shadow:inset 0 0 0 1px var(--warning)}
+.pill.unknown{color:var(--fg-muted)}
+.mark{font-size:.8rem}
+.mark.on{color:var(--state-active)}
+.mark.off{color:var(--state-disabled)}
+.empty{text-align:center; color:var(--fg-muted); padding:3rem 1rem}
+
+/* ---------- dialog ---------- */
+dialog{
+  border:none; border-radius:18px; padding:0; max-width:660px; width:calc(100% - 2rem);
+  background:var(--surface); color:var(--fg); box-shadow:var(--shadow-lg);
+}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.sheet{padding:1.4rem}
+.sheet-head{display:flex; gap:1rem; align-items:flex-start; margin-bottom:1rem}
+.sheet-head h2{font-size:1.3rem; letter-spacing:-.02em}
+.sheet-head .by{color:var(--fg-muted); font-size:.85rem; margin-top:.15rem}
+.sheet p.desc{font-size:.9rem; line-height:1.6}
+.kv{display:grid; grid-template-columns:auto 1fr; gap:.4rem .9rem; font-size:.84rem; margin:1rem 0}
+.kv dt{color:var(--fg-muted)}
+.kv dd{margin:0; min-width:0; overflow-wrap:anywhere}
+.cmd{display:flex; gap:.5rem; align-items:center; margin-top:1rem}
+.cmd code{flex:1; background:var(--pre-bg); border:1px solid var(--border); padding:.55rem .7rem; border-radius:9px; font-size:.82rem; overflow-x:auto; white-space:nowrap; color:var(--fg)}
+.btn{font:inherit; font-size:.82rem; font-weight:600; cursor:pointer; padding:.5rem .85rem; border-radius:9px; border:1px solid var(--border); background:var(--surface-2); color:var(--fg)}
+.btn.primary{background:var(--accent); color:var(--surface); border-color:transparent}
+.close{position:absolute; top:.8rem; right:.9rem; background:var(--chip-bg); border:none; color:var(--chip-fg); width:28px; height:28px; border-radius:50%; cursor:pointer; font-size:15px; line-height:1}
+aside.note{background:var(--aside-bg); border-left:3px solid var(--accent); border-radius:0 8px 8px 0; padding:.6rem .85rem; font-size:.85rem; margin:0 0 1rem}
+aside.warning{background:var(--aside-bg); border-left:3px solid var(--warning); border-radius:0 8px 8px 0; padding:.6rem .85rem; font-size:.85rem; margin:1rem 0}
+
+footer{max-width:1180px; margin:0 auto; padding:2rem 1.1rem 3rem; color:var(--fg-muted); font-size:.8rem; border-top:1px solid var(--border-soft)}
+footer h2{font-size:.95rem; margin-bottom:.4rem}
+footer ul{margin:.3rem 0 1rem; padding-left:1.1rem}
+footer li{margin:.2rem 0}
+
+@media (max-width:720px){
+  .topbar-in{padding:.6rem .8rem}
+  .counts{display:none}
+  main{padding:1rem .8rem 3rem}
+  .grid{grid-template-columns:1fr}
+  .rail{grid-auto-columns:minmax(250px,88%)}
+  .filters{top:99px}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <span class="glyph" aria-hidden="true">&#10037;</span>
+      <span>Plugin Audit<small id="brandSub">&nbsp;</small></span>
+    </div>
+    <div class="search">
+      <input id="q" type="search" placeholder="Search plugins by name, author, marketplace, or description&hellip;" autocomplete="off" aria-label="Search plugins">
+    </div>
+    <div class="counts"><b id="cShown">0</b> shown &middot; <b id="cActive">0</b> active</div>
+  </div>
+</header>
+
+<main>
+
+  <section id="findings">
+    <div class="shelf-head">
+      <div>
+        <p class="eyebrow">This machine</p>
+        <h2>Audit findings</h2>
+        <p>Computed from the local ledgers, not from a curated list. Click a card to filter the catalog below to exactly those plugins.</p>
+      </div>
+    </div>
+    <div class="rail" id="rail"></div>
+  </section>
+
+  <section id="marketplaces">
+    <div class="shelf-head">
+      <div>
+        <p class="eyebrow">Provenance</p>
+        <h2>Registered marketplaces</h2>
+        <p>Every marketplace registered on this machine, where it came from, and how many of its entries are active.</p>
+      </div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th scope="col">Marketplace</th><th scope="col">Owner</th><th scope="col">Source</th>
+          <th scope="col" class="num">Listed</th><th scope="col" class="num">Active</th>
+          <th scope="col" class="num">Disabled</th><th scope="col" class="num">Not installed</th>
+          <th scope="col">Catalog updated</th>
+        </tr></thead>
+        <tbody id="mkts"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="browse">
+    <div class="shelf-head">
+      <div>
+        <p class="eyebrow">Full catalog</p>
+        <h2>Browse everything</h2>
+        <p>
+          <span class="mark on">&#10003;</span> active &middot;
+          <span class="mark off">&#9702;</span> installed but disabled &middot;
+          unmarked = not installed.
+          Open any plugin for its copy-ready install command.
+        </p>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="chips" id="cats"></div>
+      <div class="toolrow">
+        <div class="chips" id="mktFilter" style="padding:0"></div>
+        <div class="chips" id="stats" style="padding:0"></div>
+        <label>Sort
+          <select id="sort">
+            <option value="cat">Category</option>
+            <option value="az">A&ndash;Z</option>
+            <option value="rich">Most components</option>
+            <option value="used">Most invocations</option>
+            <option value="cost">Heaviest context cost</option>
+            <option value="recent">Recently installed</option>
+          </select>
+        </label>
+      </div>
+      <div class="viewnote" id="viewnote" hidden>
+        <span id="viewnoteText"></span>
+        <button class="btn" id="clearView">Clear finding filter</button>
+      </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+    <p class="empty" id="empty" hidden>No plugins match that search.</p>
+  </section>
+</main>
+
+<footer>
+  <h2>How to read this</h2>
+  <ul>
+    <li><b>Installed and enabled are different facts in different files.</b> A plugin can sit on
+      disk and be switched off &mdash; those show as <i>installed but disabled</i>.</li>
+    <li><b>Invocation counts are not comparable across plugin types.</b> A hook or LSP plugin fires
+      on every tool call; a slash command only fires when you type it. Treat the numbers as
+      "does this get used at all", not as a ranking.</li>
+    <li><b>A usage count on a plugin that is not installed</b> means it was installed at some point
+      and later removed.</li>
+    <li><b>Component counts are read from disk.</b> An entry that is only a git pin has nothing on
+      disk until it is installed, so its counts show as <span class="pill unknown">&mdash;</span>
+      &mdash; unknown, not zero.</li>
+    <li><b>Always-on cost comes from <code>claude plugin details</code></b> where the CLI was
+      available — a real tokenizer estimate of what each plugin adds to every session. It only
+      resolves for <i>installed</i> plugins; the rest of the catalog has no cost figure. When the
+      CLI is unavailable the dashboard falls back to an offline proxy (summed skill-description
+      length), which <i>undercounts agents relative to skills</i>.</li>
+    <li><b>Agents cost far more than skills.</b> The heaviest always-on line item here is usually
+      an agent-bearing plugin, not a skill-heavy one. Any ranking that weights skills over agents
+      is wrong — that is why this dashboard ranks on tokens, not on skill count.</li>
+    <li><b>A <code>0</code> in the token column means "adds nothing to the prompt", not "does
+      nothing".</b> Hook-only and LSP plugins run harness-side: they can fire thousands of times
+      while costing zero context. Do not read a 0 as dead weight.</li>
+    <li><b>Component counts come from the disk walk, not from the CLI.</b> The two count different
+      things: the CLI folds slash commands into its "Skills" bucket, counts hook <i>events</i>
+      rather than handlers, and reports 0 for MCP servers and agents declared in
+      <code>plugin.json</code> rather than as files. Both inventories are shown in the detail
+      sheet rather than blended into a number that is true of neither.</li>
+    <li><b>MCP <i>tool</i> counts are not included.</b> Only a running server knows how many tools
+      it registers, and that varies with version and auth state.</li>
+  </ul>
+  <h2>Sources</h2>
+  <ul id="sources"></ul>
+  <div id="warnings"></div>
+  <p id="genstamp"></p>
+</footer>
+
+<dialog id="sheet"><button class="close" id="closeBtn" aria-label="Close">&#10005;</button><div class="sheet" id="sheetBody"></div></dialog>
+
+<script>
+const AUDIT = /*{{AUDIT}}*/;
+
+const DATA = AUDIT.plugins;
+const T = AUDIT.totals;
+const F = AUDIT.findings;
+const COMP_LABEL = {skills:"skill", commands:"command", agents:"agent", hooks:"hook", mcp:"MCP server", lsp:"LSP server", outputStyles:"output style"};
+const STATE_LABEL = {active:"Active", disabled:"Installed · disabled", none:"Not installed"};
+
+const byId = new Map(DATA.map(p => [p.id, p]));
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const n = v => Number(v || 0).toLocaleString();
+const day = iso => iso ? String(iso).slice(0, 10) : "—";
+
+/* Stable per-plugin hue + monogram, so the tile is recognisable across runs. */
+const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+const mono = s => { const w = s.replace(/[^a-z0-9]+/gi, " ").trim().split(" ");
+  return (w.length > 1 ? w[0][0] + w[1][0] : s.slice(0, 2)).toUpperCase(); };
+const tile = (p, sz) => '<span class="tile ' + sz + '" style="--h:' + hue(p.id) + '" aria-hidden="true">' + esc(mono(p.display)) + '</span>';
+
+const compTotal = p => p.components ? Object.values(p.components).reduce((a, b) => a + b, 0) : -1;
+const compPills = p => {
+  if (!p.components) return '<span class="pill unknown" title="Not on disk until installed">—</span>';
+  const keys = Object.keys(p.components);
+  if (!keys.length) return '<span class="pill unknown">no components</span>';
+  return keys.map(k => '<span class="pill">' + p.components[k] + " " + COMP_LABEL[k] +
+    (p.components[k] > 1 ? "s" : "") + "</span>").join("");
+};
+const SRC_NOTE = {
+  disk: "read from disk",
+  "disk+catalog": "read from disk, plus components the catalog declares",
+  catalog: "declared in the marketplace catalog — not yet on disk"
+};
+const compText = p => {
+  if (!p.components) return "— (resolved on install)";
+  const keys = Object.keys(p.components);
+  if (!keys.length) return "nothing detected on disk";
+  const list = keys.map(k => p.components[k] + " " + COMP_LABEL[k] + (p.components[k] > 1 ? "s" : "")).join(", ");
+  const note = SRC_NOTE[p.componentsSource];
+  return list + (note ? " <span style='color:var(--fg-muted)'>(" + note + ")</span>" : "");
+};
+
+/* ---- state ---- */
+const neverSet = new Set(F.neverInvoked);
+const ghostSet = new Set(F.removedButUsed.map(r => r.id));
+const VIEWS = {
+  all: {test: () => true, note: ""},
+  never: {test: p => neverSet.has(p.id), note: "Showing active plugins with zero recorded invocations."},
+  ghost: {test: p => ghostSet.has(p.id), note: "Showing plugins with recorded usage that are no longer installed."},
+  off: {test: p => p.state === "disabled", note: "Showing plugins on disk that are switched off."},
+  cost: {test: p => p.state === "active" && ((p.alwaysOnTokens || 0) > 0 || (p.descriptionChars || 0) > 0),
+         note: "Showing active plugins that add tokens to every session. Sort by “Heaviest context cost” to rank them."},
+  free: {test: p => p.state === "active" && p.alwaysOnTokens === 0,
+         note: "Showing active plugins that add nothing to the prompt — hook-only and LSP plugins run harness-side. 0 cost does not mean 0 value."},
+  unknown: {test: p => p.components === null, note: "Showing entries whose components cannot be counted because they are not on disk."}
+};
+const state = {cat: "all", mkt: "all", stat: "all", q: "", sort: "cat", view: "all"};
+
+/* ---- findings rail ---- */
+const heaviest = AUDIT.topContextCost[0];
+const FINDINGS = [
+  {big: n(T.active), tone: "active", title: "Active plugins", view: "all", stat: "active",
+   why: "Installed and switched on — loaded into every session on this machine."},
+  {big: n(T.disabled), tone: "muted", title: "Installed but disabled", view: "off",
+   why: "On disk and switched off in settings. No runtime cost, but they still take disk and still show up in updates."},
+  {big: n(F.neverInvoked.length), tone: "warn", title: "Active, never invoked", view: "never",
+   why: "Switched on but with zero recorded invocations. The first place to look when trimming."},
+  {big: n(F.removedButUsed.length), tone: "warn", title: "Used, since removed", view: "ghost",
+   why: "The usage ledger remembers them but they are not installed now — installed once, later removed."},
+  T.alwaysOnTokens !== null
+    ? {big: "~" + n(T.alwaysOnTokens), unit: true, tone: "warn", title: "Tokens added every session", view: "cost",
+       why: "Always-on cost across " + n(T.alwaysOnTokensCoverage) + " active plugins, from <code>claude plugin details</code>" +
+            (heaviest ? ". Heaviest: " + esc(heaviest.id) + " at ~" + n(heaviest.alwaysOnTokens) + " tok (" +
+              heaviest.agents + " agents, " + heaviest.skills + " skills)." : ".") +
+            " " + n(T.zeroCostActive.length) + " active plugins cost 0 — hook-only and LSP plugins are harness-side."}
+    : {big: n(T.alwaysOnDescriptionChars), unit: true, tone: "warn", title: "Chars injected every turn", view: "cost",
+       why: "Offline proxy (the <code>claude</code> CLI was unavailable): summed skill-description length across " +
+            n(T.alwaysOnSkills) + " active skills. Undercounts agents relative to skills."},
+  {big: n(F.unknownComponents), tone: "muted", title: "Components unknown", view: "unknown",
+   why: "Catalog entries that are only a git pin. Nothing on disk to count, so they render as an em dash rather than zero."}
+];
+if (T.alwaysOnTokens !== null && T.zeroCostActive.length) {
+  FINDINGS.splice(5, 0, {big: n(T.zeroCostActive.length), tone: "active", title: "Free to keep on", view: "free",
+    why: "Active plugins that add 0 tokens to the prompt. Hooks and LSP servers run harness-side — cheap to leave enabled."});
+}
+
+document.getElementById("rail").innerHTML = FINDINGS.map(f =>
+  '<button class="finding" data-view="' + f.view + '" data-stat="' + (f.stat || "") + '" data-tone="' + f.tone + '">' +
+  '<span class="big' + (f.unit ? " unit" : "") + '">' + f.big + "</span>" +
+  "<h3>" + esc(f.title) + "</h3><p>" + f.why + "</p></button>").join("");
+
+/* ---- marketplace table ---- */
+document.getElementById("mkts").innerHTML = AUDIT.marketplaces.map(m => {
+  const src = m.provenance.ref
+    ? (m.provenance.kind === "github" ? "github:" + m.provenance.ref : m.provenance.ref)
+    : m.provenance.kind;
+  return "<tr><td>" + esc(m.name) + (m.broken ? ' <span class="pill ghost">unreadable</span>' : "") +
+    "</td><td>" + esc(m.owner || "—") + "</td><td>" + esc(src) +
+    (m.autoUpdate ? ' <span class="pill">auto</span>' : "") +
+    '</td><td class="num">' + (m.listed || "—") + '</td><td class="num">' + m.active +
+    '</td><td class="num">' + m.disabled + '</td><td class="num">' + m.notInstalled +
+    "</td><td>" + day(m.lastUpdated) + "</td></tr>";
+}).join("");
+
+/* ---- filter chips ---- */
+const tally = key => DATA.reduce((acc, p) => (acc[p[key]] = (acc[p[key]] || 0) + 1, acc), {});
+const cats = tally("category");
+const catList = ["all", ...Object.keys(cats).sort((a, b) => cats[b] - cats[a] || a.localeCompare(b))];
+const mkts = tally("marketplace");
+const mktList = ["all", ...Object.keys(mkts).sort((a, b) => mkts[b] - mkts[a] || a.localeCompare(b))];
+
+document.getElementById("cats").innerHTML = catList.map(c =>
+  '<button class="chip" data-cat="' + esc(c) + '" aria-pressed="' + (c === "all") + '">' +
+  (c === "all" ? "All categories" : esc(c)) + '<span class="n">' + (c === "all" ? DATA.length : cats[c]) + "</span></button>").join("");
+document.getElementById("mktFilter").innerHTML = mktList.map(m =>
+  '<button class="chip" data-mkt="' + esc(m) + '" aria-pressed="' + (m === "all") + '">' +
+  (m === "all" ? "Any marketplace" : esc(m)) + '<span class="n">' + (m === "all" ? DATA.length : mkts[m]) + "</span></button>").join("");
+const STAT_LABEL = {all: "Any status", active: "Active", disabled: "Disabled", none: "Not installed"};
+document.getElementById("stats").innerHTML = ["all", "active", "disabled", "none"].map(s => {
+  const c = s === "all" ? DATA.length : DATA.filter(p => p.state === s).length;
+  return '<button class="chip" data-stat="' + s + '" aria-pressed="' + (s === "all") + '">' +
+    STAT_LABEL[s] + '<span class="n">' + c + "</span></button>";
+}).join("");
+
+const catRank = Object.fromEntries(catList.slice(1).map((c, i) => [c, i]));
+const stateRank = {active: 0, disabled: 1, none: 2};
+
+function render() {
+  const q = state.q.toLowerCase().trim();
+  const view = VIEWS[state.view] || VIEWS.all;
+  const rows = DATA.filter(p =>
+    (state.cat === "all" || p.category === state.cat) &&
+    (state.mkt === "all" || p.marketplace === state.mkt) &&
+    (state.stat === "all" || p.state === state.stat) &&
+    view.test(p) &&
+    (!q || (p.id + " " + p.display + " " + p.author + " " + p.desc + " " + p.tags.join(" ")).toLowerCase().includes(q)));
+
+  const s = state.sort;
+  rows.sort((a, b) =>
+    s === "az" ? a.name.localeCompare(b.name) :
+    s === "rich" ? compTotal(b) - compTotal(a) || a.name.localeCompare(b.name) :
+    s === "used" ? (b.uses || 0) - (a.uses || 0) || a.name.localeCompare(b.name) :
+    s === "cost" ? (b.alwaysOnTokens ?? -1) - (a.alwaysOnTokens ?? -1) || (b.descriptionChars || 0) - (a.descriptionChars || 0) || a.name.localeCompare(b.name) :
+    s === "recent" ? String(b.install && b.install.installedAt || "").localeCompare(String(a.install && a.install.installedAt || "")) || a.name.localeCompare(b.name) :
+    (catRank[a.category] - catRank[b.category]) || (stateRank[a.state] - stateRank[b.state]) || a.name.localeCompare(b.name));
+
+  document.getElementById("grid").innerHTML = rows.map(p => {
+    const marker = p.state === "active" ? '<span class="mark on" title="Active">✓</span>'
+      : p.state === "disabled" ? '<span class="mark off" title="Installed but disabled">◦</span>' : "";
+    const ghost = !p.installed && (p.uses || 0) > 0
+      ? '<span class="pill ghost">used ' + n(p.uses) + "×, since removed</span>" : "";
+    const statePill = p.state === "none" ? ""
+      : '<span class="pill ' + (p.state === "active" ? "on" : "off") + '">' + STATE_LABEL[p.state] + "</span>";
+    return '<button class="card" data-id="' + esc(p.id) + '">' + tile(p, "md") +
+      '<div class="body"><h3>' + esc(p.display) + marker + "</h3>" +
+      '<div class="by">' + esc(p.author || p.marketplace) + " · " + esc(p.marketplace) + "</div>" +
+      "<p>" + esc(p.desc || (p.listed ? "No description in the marketplace entry." : "Not listed in any registered marketplace catalog.")) + "</p>" +
+      '<div class="pills">' + statePill + ghost +
+      (p.state === "active" && (p.uses || 0) > 0 ? '<span class="pill">' + n(p.uses) + " invocations</span>" : "") +
+      compPills(p) + "</div></div></button>";
+  }).join("");
+
+  document.getElementById("empty").hidden = rows.length > 0;
+  document.getElementById("cShown").textContent = rows.length;
+  const vn = document.getElementById("viewnote");
+  vn.hidden = state.view === "all";
+  document.getElementById("viewnoteText").textContent = view.note;
+}
+
+/* ---- detail sheet ---- */
+const dlg = document.getElementById("sheet");
+function openSheet(id) {
+  const p = byId.get(id);
+  if (!p) return;
+  const rows = [];
+  const kv = (k, v) => rows.push("<dt>" + k + "</dt><dd>" + v + "</dd>");
+  // compText returns markup (fixed labels + numbers only — no user data).
+  kv("Ships", compText(p));
+  if (p.skillList.length) {
+    kv("Skills", p.skillList.map(s => esc(s.name) + " <span style='color:var(--fg-muted)'>(" + n(s.descriptionChars) + " chars)</span>").join(", "));
+  }
+  if (p.hookEvents.length) kv("Hook events", p.hookEvents.map(esc).join(", "));
+  if (p.mcpServers.length) kv("MCP servers", p.mcpServers.map(esc).join(", ") + " <span style='color:var(--fg-muted)'>(tool count needs a running server)</span>");
+  if (p.lspServers.length) kv("LSP servers", p.lspServers.map(esc).join(", "));
+  if (Number.isFinite(p.alwaysOnTokens)) {
+    kv("Always-on cost", p.alwaysOnTokens === 0
+      ? "~0 tok <span style='color:var(--fg-muted)'>— adds nothing to the prompt (harness-side), which is not the same as doing nothing</span>"
+      : "~" + n(p.alwaysOnTokens) + " tok added to every session" +
+        (p.state === "active" ? "" : " <span style='color:var(--fg-muted)'>(not loaded while " + p.state + ")</span>") +
+        " <span style='color:var(--fg-muted)'>(claude plugin details)</span>");
+  } else if (p.descriptionChars) {
+    kv("Always-on cost", n(p.descriptionChars) + " chars of skill description per turn" +
+      " <span style='color:var(--fg-muted)'>(offline proxy — undercounts agents)</span>");
+  }
+  if (p.cliInventory) {
+    kv("CLI inventory", Object.keys(p.cliInventory).map(k => esc(k) + " " + p.cliInventory[k]).join(", ") +
+      " <span style='color:var(--fg-muted)'>(claude plugin details counts slash commands as skills and hooks as events, so these differ from the disk walk by design)</span>");
+  }
+  kv("Category", esc(p.category));
+  kv("Source", p.sourceKind === "local" ? "marketplace-local <code>" + esc(p.sourceRef) + "</code>"
+    : p.sourceRef ? esc(p.sourceKind) + " <code>" + esc(p.sourceRef) + "</code>" : esc(p.sourceKind));
+  if (p.url) kv("Homepage", '<a href="' + esc(p.url) + '" target="_blank" rel="noopener">' + esc(p.url.replace(/^https?:\/\//, "")) + "</a>");
+  if (p.install) {
+    kv("Installed at", "<code>" + esc(p.install.installPath) + "</code>");
+    kv("Installed", day(p.install.installedAt) + " · updated " + day(p.install.lastUpdated) +
+       " · scope " + esc(p.install.scope) + (p.install.version ? " · v" + esc(p.install.version) : ""));
+    if (p.install.gitCommitSha) kv("Commit", "<code>" + esc(String(p.install.gitCommitSha).slice(0, 12)) + "</code>");
+  }
+  if (p.enabled !== null) kv("Switch", (p.enabled ? "enabled" : "disabled") + " in " + esc(p.enabledScope) + " settings");
+  else if (p.installed) kv("Switch", "no enabledPlugins entry — treated as active");
+  kv("Invocations", p.uses === null ? "no ledger entry" : n(p.uses) + (p.lastUsedAt ? " · last " + day(p.lastUsedAt) : ""));
+
+  const notes = [];
+  if (!p.listed) notes.push('<aside class="note"><b>Not in any registered catalog.</b> This row comes from the local ledgers only — either the marketplace was removed, or Claude Code recorded it under a pseudo-marketplace such as <code>@inline</code> for a locally loaded plugin.</aside>');
+  if (!p.installed && (p.uses || 0) > 0) notes.push('<aside class="note"><b>Recorded usage without an install.</b> It was installed at some point and later removed.</aside>');
+  if (p.components === null) notes.push('<aside class="note"><b>Component counts unknown.</b> This entry is a git pin with nothing on disk yet; the counts resolve on install.</aside>');
+
+  document.getElementById("sheetBody").innerHTML =
+    '<div class="sheet-head">' + tile(p, "xl") + "<div><h2>" + esc(p.display) + "</h2>" +
+    '<div class="by">' + esc(p.author || "unknown author") + " · " + esc(p.marketplace) +
+    (p.version ? " · v" + esc(p.version) : "") + "</div>" +
+    '<div class="pills" style="margin-top:.4rem">' +
+    '<span class="pill ' + (p.state === "active" ? "on" : p.state === "disabled" ? "off" : "unknown") + '">' + STATE_LABEL[p.state] + "</span>" +
+    ((p.uses || 0) > 0 ? '<span class="pill">' + n(p.uses) + " invocations</span>" : "") +
+    "</div></div></div>" + notes.join("") +
+    '<p class="desc">' + esc(p.desc || "No description available.") + "</p>" +
+    '<dl class="kv">' + rows.join("") + "</dl>" +
+    '<div class="cmd"><code id="cmdTxt">/plugin install ' + esc(p.name) + "@" + esc(p.marketplace) + "</code>" +
+    '<button class="btn primary" id="copyBtn">Copy</button></div>';
+
+  dlg.showModal();
+  document.getElementById("copyBtn").onclick = e => {
+    const txt = document.getElementById("cmdTxt").textContent;
+    if (navigator.clipboard) navigator.clipboard.writeText(txt);
+    e.target.textContent = "Copied";
+    setTimeout(() => { e.target.textContent = "Copy"; }, 1200);
+  };
+}
+
+/* ---- wiring ---- */
+function press(selector, el, key) {
+  document.querySelectorAll(selector).forEach(b => b.setAttribute("aria-pressed", String(b === el)));
+  return key;
+}
+document.body.addEventListener("click", e => {
+  const card = e.target.closest("[data-id]");
+  if (card) return openSheet(card.dataset.id);
+
+  const finding = e.target.closest("[data-view]");
+  if (finding) {
+    state.view = finding.dataset.view;
+    if (finding.dataset.stat) {
+      state.stat = finding.dataset.stat;
+      document.querySelectorAll("[data-stat]").forEach(b =>
+        b.setAttribute("aria-pressed", String(b.dataset.stat === state.stat)));
+    }
+    document.getElementById("browse").scrollIntoView({behavior: "smooth", block: "start"});
+    return render();
+  }
+  const cat = e.target.closest("[data-cat]");
+  if (cat) { state.cat = press("[data-cat]", cat, cat.dataset.cat); return render(); }
+  const mkt = e.target.closest("[data-mkt]");
+  if (mkt) { state.mkt = press("[data-mkt]", mkt, mkt.dataset.mkt); return render(); }
+  const st = e.target.closest(".chip[data-stat]");
+  if (st) { state.stat = press(".chip[data-stat]", st, st.dataset.stat); return render(); }
+});
+document.getElementById("clearView").onclick = () => { state.view = "all"; render(); };
+document.getElementById("closeBtn").onclick = () => dlg.close();
+dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close(); });
+document.getElementById("q").oninput = e => { state.q = e.target.value; render(); };
+document.getElementById("sort").onchange = e => { state.sort = e.target.value; render(); };
+
+/* ---- provenance footer ---- */
+document.getElementById("brandSub").textContent = AUDIT.meta.configDir;
+document.getElementById("cActive").textContent = n(T.active);
+document.getElementById("sources").innerHTML = [
+  "<code>" + esc(AUDIT.meta.marketplacesDir) + "/*/.claude-plugin/marketplace.json</code> — " + n(T.marketplaces) + " catalogs, " + n(T.listedEntries) + " listed entries",
+  "<code>" + esc(AUDIT.meta.installedPluginsFile) + "</code> — what is on disk",
+  AUDIT.meta.settingsLayers.length
+    ? "settings chain (user &lt; project &lt; local): " + AUDIT.meta.settingsLayers.map(s => "<code>" + esc(s) + "</code>").join(", ")
+    : "no settings file found — every installed plugin is treated as active",
+  "<code>" + esc(AUDIT.meta.usageLedgerFile) + "</code> — <code>pluginUsage</code> invocation counters",
+  "always-on token cost: " + esc(AUDIT.meta.costSource || "proxy"),
+  T.unlistedLedgerKeys + " ledger keys are not listed in any registered catalog" +
+    (T.omittedZeroUsageLedgerKeys ? "; a further " + T.omittedZeroUsageLedgerKeys + " zero-usage keys were omitted as noise" : "")
+].map(s => "<li>" + s + "</li>").join("");
+if (AUDIT.meta.warnings.length) {
+  document.getElementById("warnings").innerHTML =
+    '<aside class="warning"><b>Warnings while collecting:</b><ul>' +
+    AUDIT.meta.warnings.map(w => "<li>" + esc(w) + "</li>").join("") + "</ul></aside>";
+}
+document.getElementById("genstamp").textContent =
+  "Generated " + AUDIT.meta.generatedAt + " · node " + AUDIT.meta.node + " · " + AUDIT.meta.platform +
+  " · project settings from " + AUDIT.meta.projectDir;
+
+render();
+</script>
+</body>
+</html>

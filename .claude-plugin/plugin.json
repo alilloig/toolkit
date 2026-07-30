@@ -1,7 +1,7 @@
 {
   "name": "toolkit",
   "version": "0.6.0",
-  "description": "Self-contained HTML deliverable toolkit — bundles html-artifact (one-off visual deliverables), publish-html (turn a local .html into a shareable URL), for-dummies (auto-derived project intros), move-call-chains (HTML call-chain diagrams for Sui Move packages), teleprompter (turn any text or deck notes into a time-synced HTML teleprompter), inkscape-live (live-edit the open macOS Inkscape document via the inkscape MCP server), and inkscape-headless (sandbox/size-limit navigation and print-PDF workflows for headless inkscape MCP file work).",
+  "description": "Self-contained HTML deliverable toolkit — bundles html-artifact (one-off visual deliverables), publish-html (turn a local .html into a shareable URL), for-dummies (auto-derived project intros), move-call-chains (HTML call-chain diagrams for Sui Move packages), teleprompter (turn any text or deck notes into a time-synced HTML teleprompter), plugin-audit (audit the locally installed Claude Code plugins and browse every registered marketplace as an HTML dashboard), inkscape-live (live-edit the open macOS Inkscape document via the inkscape MCP server), and inkscape-headless (sandbox/size-limit navigation and print-PDF workflows for headless inkscape MCP file work).",
   "author": {
     "name": "alilloig"
   },
@@ -14,6 +14,8 @@
     "move",
     "diagrams",
     "teleprompter",
+    "plugins",
+    "audit",
     "inkscape"
   ],
   "skills": "./skills/"
