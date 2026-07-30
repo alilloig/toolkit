@@ -4,6 +4,97 @@ All notable changes to the `toolkit` plugin are documented in this file. The for
 
 ## [Unreleased]
 
+### Added
+
+- **`plugin-audit` skill** — audits the Claude Code plugins installed on the
+  current machine and emits a self-contained HTML dashboard for browsing every
+  registered marketplace. The bundled zero-dependency collector
+  (`scripts/plugin-audit.mjs`, plain ESM so it runs under bare `node` on a
+  stranger's machine with no build step) cross-references four local sources —
+  every `plugins/marketplaces/*/.claude-plugin/marketplace.json` catalog,
+  `installed_plugins.json`, the `enabledPlugins` map merged across the
+  user < project < local settings chain, and the `pluginUsage` counters in
+  `.claude.json` — then injects the result into `template.html`. Resolves
+  `CLAUDE_CONFIG_DIR` (falling back to `~/.claude`) at runtime and never writes
+  to the Claude config directory.
+  Distinguishes the **three** install states that the two source files imply
+  (active / installed-but-disabled / not installed), counts what each plugin
+  ships (skills, commands, agents, hook handlers, MCP servers, LSP servers), and
+  surfaces two signals the raw ledgers do not: plugins that are switched on but
+  have never been invoked, and the **always-on token cost** of everything that is
+  enabled.
+  For that cost the collector shells out to the first-party
+  `claude plugin details <name>@<marketplace>` (bounded concurrency, ~10 s for 80
+  installed plugins) and uses its tokenizer-based estimate, falling back to an
+  offline skill-description-length proxy when the CLI is unavailable or
+  `--no-cli` is passed — the dashboard states which source answered. The CLI is
+  deliberately **not** used for component counts: it folds slash commands into its
+  "Skills" bucket, counts hook *events* where the disk walk counts *handlers*, and
+  reports `0` for MCP servers and agents declared in `plugin.json` rather than as
+  files, so blending the two would produce numbers true of neither. The disk walk
+  owns the inventory, the CLI owns the cost, and both are shown side by side.
+  Two cost findings are surfaced explicitly because they invert the naive
+  conclusion: **agents cost far more than skills** (`pr-review-toolkit`, 6 agents
+  and 1 skill, is a bigger always-on line item than `plugin-dev` at 8 skills and 3
+  agents), and **a `0` token cost means "adds nothing to the prompt", not "does
+  nothing"** — hook-only and LSP plugins are harness-side, so `security-guidance`
+  fires thousands of times for ~0 always-on tokens.
+  Output is one double-click-openable `.html` file: an App-Store-style card grid
+  with hash-derived icon tiles, sticky search, category / marketplace / status
+  chip filters, six sort modes, data-driven finding cards that filter the catalog
+  on click, a marketplace-provenance table, and a `<dialog>` detail sheet
+  carrying the copy-ready `/plugin install <name>@<marketplace>` command. A
+  documented deviation from `html-conventions.md`'s conservative document
+  aesthetic (browse affordances beat prose typography for a few-hundred-item
+  catalog) that keeps the token palette, dark/light via `prefers-color-scheme`,
+  semantic structure, the single mobile breakpoint, and strict self-containment.
+- **`skills/plugin-audit/references/data-sources.md`** — the four data sources,
+  every varying field shape (`source` as relative string vs. `url`/`github`/
+  `git-subdir` object, `author` object, `skills` as string array vs. object
+  array, optional `category`/`version`/`tags`/`keywords`/`lspServers`), the
+  interpretation caveats, and the graceful-degradation matrix.
+
+### Fixed
+
+Five data-shape traps found while building the prototype this skill generalises,
+each now handled in the collector and recorded as a regression note in both
+`SKILL.md` and the script header so a future edit cannot quietly reintroduce them:
+
+- **Short-name collisions across marketplaces.** Ledger keys are
+  `name@marketplace`; keying a lookup on the bare `name` let `hookify@inline`
+  (61 invocations) silently clobber `hookify@claude-plugins-official` (46k+).
+  Every map is keyed on the full pair.
+- **Mid-write JSON reads.** Claude Code truncates and rewrites `settings.json`,
+  `installed_plugins.json` and `.claude.json` while it runs; a read landing
+  mid-write throws `Unexpected end of JSON input`, indistinguishable from real
+  corruption. Reads now retry before declaring a file broken, and a definitive
+  failure degrades to a warning instead of aborting the audit.
+- **Component counts that only resolve locally.** A git-pinned marketplace entry
+  has no `skills/`, `commands/` or `agents/` on disk until installed. Counts come
+  from walking the plugin directory (installed `installPath`, else a
+  marketplace-local relative `source`) and render as an em dash when there is
+  nothing to walk — never as zero. `null` (unknown) and `{}` (walked, ships
+  nothing) are kept distinct.
+- **MCP servers are declared in three places.** `.mcp.json` in a wrapped form
+  (`{"mcpServers": {…}}`), `.mcp.json` in a bare form (`{"github": {…}}`), and
+  `plugin.json` → `mcpServers` **with no `.mcp.json` at all** (`sentry` does this —
+  and it is the case the first-party CLI misses, reporting "MCP servers (0)" for a
+  plugin that ships one). On one machine `telegram`/`discord`/`imessage`/`slack`/
+  `notion` wrap while `github`/`pagerduty`/`linear`/`serena` do not. Reading only
+  the wrapper key reported a provably wrong 0; all three sources are now unioned,
+  and `hooks/hooks.json` gets the same `raw.<wrapper> ?? raw` treatment.
+- **LSP plugins declare their components in the marketplace entry, not
+  `plugin.json`.** All 12 `*-lsp` entries in `claude-plugins-official` ship no
+  `plugin.json` at all, so a disk-only walk reported "ships nothing" for plugins
+  that provably ship an LSP server. Catalog-declared components are merged with
+  the disk walk (disk wins where both know a component) and the dashboard records
+  which source answered. The same merge recovers skills for marketplaces whose
+  `source` is `"./"` with skills at the plugin root.
+
+Related: marketplace-level `renames` maps (`adlc` → `agentforce-adlc`) are applied
+so ledger keys written before a rename fold onto the current entry instead of
+appearing as phantom uninstalled plugins.
+
 ## [0.6.0] - 2026-07-18
 
 ### Added
