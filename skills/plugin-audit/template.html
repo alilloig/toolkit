@@ -418,7 +418,7 @@ document.getElementById("mkts").innerHTML = AUDIT.marketplaces.map(m => {
   return "<tr><td>" + esc(m.name) + (m.broken ? ' <span class="pill ghost">unreadable</span>' : "") +
     "</td><td>" + esc(m.owner || "—") + "</td><td>" + esc(src) +
     (m.autoUpdate ? ' <span class="pill">auto</span>' : "") +
-    '</td><td class="num">' + (m.listed || "—") + '</td><td class="num">' + m.active +
+    '</td><td class="num">' + (m.listed ?? "—") + '</td><td class="num">' + m.active +
     '</td><td class="num">' + m.disabled + '</td><td class="num">' + m.notInstalled +
     "</td><td>" + day(m.lastUpdated) + "</td></tr>";
 }).join("");
@@ -520,7 +520,14 @@ function openSheet(id) {
   kv("Category", esc(p.category));
   kv("Source", p.sourceKind === "local" ? "marketplace-local <code>" + esc(p.sourceRef) + "</code>"
     : p.sourceRef ? esc(p.sourceKind) + " <code>" + esc(p.sourceRef) + "</code>" : esc(p.sourceKind));
-  if (p.url) kv("Homepage", '<a href="' + esc(p.url) + '" target="_blank" rel="noopener">' + esc(p.url.replace(/^https?:\/\//, "")) + "</a>");
+  if (p.url) {
+    // Scheme allowlist: esc() stops attribute breakout but not `javascript:`,
+    // and p.url is third-party marketplace metadata.
+    const httpUrl = /^https?:\/\//i.test(String(p.url)) ? String(p.url) : "";
+    kv("Homepage", httpUrl
+      ? '<a href="' + esc(httpUrl) + '" target="_blank" rel="noopener">' + esc(httpUrl.replace(/^https?:\/\//, "")) + "</a>"
+      : esc(p.url));
+  }
   if (p.install) {
     kv("Installed at", "<code>" + esc(p.install.installPath) + "</code>");
     kv("Installed", day(p.install.installedAt) + " · updated " + day(p.install.lastUpdated) +

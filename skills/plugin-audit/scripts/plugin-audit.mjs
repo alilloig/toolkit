@@ -257,11 +257,12 @@ function loadMarketplaces(configDir, warnings) {
         entries: [],
         broken: true,
       });
-      if (res.missing) {
-        warnings.push(
-          `Marketplace "${name}" has no .claude-plugin/marketplace.json — treated as empty.`
-        );
-      }
+      warnings.push(
+        res.missing
+          ? `Marketplace "${name}" has no .claude-plugin/marketplace.json — treated as empty.`
+          : `Marketplace "${name}" has an unusable .claude-plugin/marketplace.json ` +
+            `(not a JSON object) — treated as empty.`
+      );
       continue;
     }
 
@@ -787,8 +788,8 @@ function buildRecords({ marketplaces, installed, enabled, usage }) {
  * Two hard limits mean it CANNOT replace the disk walk:
  *   - it only knows *installed* plugins, and most of a catalog is not installed;
  *   - it under-reports MCP servers declared in `plugin.json` with no `.mcp.json`
- *     (it prints "MCP servers (0)" for sentry, which ships one). So component
- *     counts take the max of both sources and disagreements are recorded.
+ *     (it prints "MCP servers (0)" for sentry, which ships one). Component
+ *     counts are therefore NOT merged — see applyCliDetails().
  * There is no --json flag, so this parses human-readable output defensively:
  * anything it fails to recognise degrades to null, never to a wrong number.
  */
@@ -810,8 +811,8 @@ function parsePluginDetails(text) {
       const count = Number(inv[2]);
       out.all[key] = count;
       if (count > 0) out.counts[key] = count;
-      const rest = inv[3].replace(/\((?:harness-only|[^)]*no model context[^)]*)\)/g, "").trim();
-      if (rest) out.names[key] = rest.split(",").map((s) => s.trim()).filter(Boolean);
+      const rest = inv[3].replace(/\([^)]*\)/g, "").trim();
+      if (rest) out.names[key] = rest.split(",").map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
       if (/harness-only/i.test(inv[3])) out.harnessOnly = true;
       continue;
     }
@@ -844,6 +845,11 @@ async function collectCliDetails(ids, concurrency = 8) {
         ["plugin", "details", id],
         { timeout: 25000, maxBuffer: 8 * 1024 * 1024 },
         (err, stdout, stderr) => {
+          // A SIGTERM'd or maxBuffer-killed child still delivers partial stdout;
+          // accepting it would store a truncated inventory as a success.
+          if (err && (err.killed || err.code === "ETIMEDOUT" || /maxBuffer/i.test(err.message || ""))) {
+            return resolve(null);
+          }
           const text = String(stdout || "") + String(stderr || "");
           // The CLI exits 0 with a "not found" message for uninstalled plugins.
           if (!text.trim() || /not found/i.test(text)) return resolve(null);
@@ -920,7 +926,7 @@ function summarize(records, marketplaces, warnings, meta) {
   const findings = {
     // Installed and switched on, but never invoked on this machine.
     neverInvoked: active
-      .filter((r) => (r.uses || 0) === 0)
+      .filter((r) => r.uses === 0)
       .map((r) => r.id)
       .sort(),
     // On disk, switched off — costs nothing at runtime, still costs disk.
@@ -1035,8 +1041,8 @@ function embeddable(value) {
   // literal is valid JS but mis-tokenizes in several editor parsers, which
   // reported phantom "unterminated regular expression" errors on this function.
   return JSON.stringify(value)
-    .split("</")
-    .join("<\\/")
+    .split("<")
+    .join("\\u003c")
     .split("\u2028")
     .join("\\u2028")
     .split("\u2029")
@@ -1097,7 +1103,7 @@ function printSummary(audit) {
   for (const m of audit.marketplaces) {
     L.push(
       pad(m.name, 30) +
-        pad(m.listed || "-", 8) +
+        pad(m.listed ?? "-", 8) +
         pad(m.active, 8) +
         pad(m.disabled, 6) +
         pad(m.notInstalled, 10) +
@@ -1169,8 +1175,11 @@ function parseArgs(argv) {
     else if (a.startsWith("--project=")) opts.project = expandHome(a.slice(10));
     else throw new Error(`Unknown argument: ${a}`);
   }
-  if (opts.out === undefined || (opts.out !== null && !opts.out)) {
+  if (opts.out !== null && !opts.out) {
     throw new Error("--out requires a path");
+  }
+  if ("project" in opts && !opts.project) {
+    throw new Error("--project requires a directory");
   }
   return opts;
 }
@@ -1225,10 +1234,17 @@ async function main() {
     if (await claudeCliAvailable()) {
       const details = await collectCliDetails([...installed.byId.keys()]);
       applyCliDetails(records, details);
-      costSource = `claude plugin details (${details.size}/${installed.byId.size} installed plugins)`;
-      if (details.size < installed.byId.size) {
+      const measured = [...details.values()].filter((d) => d.alwaysOnTokens !== null).length;
+      costSource = `claude plugin details (${measured}/${installed.byId.size} installed plugins)`;
+      if (details.size && !measured) {
         warnings.push(
-          `\`claude plugin details\` answered for ${details.size} of ${installed.byId.size} ` +
+          "`claude plugin details` answered but reported no always-on figure; " +
+            "using the skill-description-length proxy instead."
+        );
+      }
+      if (measured < installed.byId.size) {
+        warnings.push(
+          `\`claude plugin details\` answered for ${measured} of ${installed.byId.size} ` +
             `installed plugins; the rest fall back to the skill-description-length proxy.`
         );
       }
