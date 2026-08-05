@@ -63,18 +63,19 @@ Small inline stylesheet. Conservative aesthetic.
 - **Type scale — each heading step at least 1.25× the next.** Two sizes 5% apart read as a mistake, not a hierarchy. The default:
 
   ```css
-  h1 { font-size: 1.7rem; }                       /* 1.31× h2 */
+  h1 { font-size: 2rem; }                         /* 1.54× h2 */
   h2 { font-size: 1.3rem; }                       /* 1.30× body */
   h3 { font-size: 1rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  h4 { font-size: 1rem; font-weight: 600; }       /* register, not size */
   ```
 
-  Two sizes, three levels. `h3` separates by **register**, not size, because a third size between `1.3rem` and `1rem` cannot clear 1.25× on both sides. Add `h4` the same way at `.95rem`.
+  Two sizes, four levels. `h3` and `h4` separate by **register**, not size, because a third size between `1.3rem` and `1rem` cannot clear 1.25× on both sides.
 
   **Size every heading you style.** The common bug is a rule like `h1, h2, h3 { color: … }` that sets color for three levels but a size for two — the unsized one falls to the browser default (~1.17rem for `h3`) and lands *between* your steps, creating two flat ratios from one omission.
 
   Keep **one** de-emphasis size for captions, `small`, table headers and inline code — `.9em` is a good default. Shipping `.92em` next to `.9em` is noise. De-emphasis is not a heading level, so its ratio to body is exempt from the 1.25 rule.
 
-  The `impeccable` hook flags near-equal steps as `flat-type-hierarchy`.
+  The `impeccable` hook's `flat-type-hierarchy` check measures something different from the step rule above: it divides the page's single largest rendered font size by its smallest and flags anything under 2.0×, regardless of how evenly the steps in between are spaced. A scale that satisfies the 1.25×-per-step rule can still trip it if the overall span is narrow — the scale above clears both.
 - **Mobile-responsive** via a single `@media (max-width: 720px)` block. Don't ship more than one breakpoint unless you need it.
 - **Conservative aesthetic**: no gradients, no glass-morphism, no neon palettes, no emoji-decorated headings. Aim for "I trust this document" not "AI-styled landing page."
 - **Use the token palette below** — reference colors through CSS custom properties (`var(--…)`) instead of literal hex values. The one exception is `currentColor` inside inline SVG (it resolves to `var(--fg)` via the cascade). Pick the 2–4 semantic colors your artifact needs *from the tokens*; if you need a state color the palette doesn't cover, extend the tokens in both light and dark branches — don't drop a raw `#hex` inline.
@@ -145,15 +146,15 @@ aside.warning { background: var(--warning-bg); }
 aside.error   { background: var(--error-bg); }
 aside p:first-child { margin-top: 0; }
 aside p:last-child  { margin-bottom: 0; }
-aside :is(strong, b):first-child         { color: var(--accent); }
+aside :is(strong, b):first-child         { color: var(--heading-fg); }
 aside.success :is(strong, b):first-child { color: var(--success); }
 aside.warning :is(strong, b):first-child { color: var(--warning); }
 aside.error   :is(strong, b):first-child { color: var(--error); }
 ```
 
-Every token in `:root` is wired into at least one component rule above — the demo is the canonical mapping. When an artifact needs a token as text color rather than as a border accent (e.g. `color: var(--warning)` for an inline status word), the light values clear WCAG AA against `--bg`; the dark values clear AA against the dark `--bg` with margin. The state colors also clear AA against their matching `--*-bg` tint (measured: 4.6–5.1:1 in light mode, 6.1:1+ in dark), which is what makes the lead-in `<strong>` treatment safe.
+Every token in `:root` is wired into at least one component rule above — the demo is the canonical mapping. When an artifact needs a token as text color rather than as a border accent (e.g. `color: var(--warning)` for an inline status word), the light values clear WCAG AA against `--bg`; the dark values clear AA against the dark `--bg` with margin. The state colors also clear AA against their matching `--*-bg` tint (measured: 4.6–5.1:1 in light mode, 6.1:1+ in dark), which is what makes the lead-in `<strong>` treatment safe for the three state classes. The neutral (unclassed) callout's lead-in uses `--heading-fg` instead of `--accent` — plain `--accent` measures only 4.22:1 against `--aside-bg` in light mode, short of the 4.5:1 AA floor, while `--heading-fg` clears it by a wide margin.
 
-**Callout shape — do not use a side tab.** A thick colored border on one edge of a card (`border-left: 3px solid …`) is the single most recognizable tell of machine-generated UI, and the `impeccable` design hook flags it by name (`side-tab`). The convention above encodes the state three ways instead — a faint background tint, a hairline border on all four sides, and the state color on the callout's opening `<strong>` — which stays legible in both themes without the tell. Structure callouts as `<aside class="warning"><p><strong>Label.</strong> Body…</p></aside>` so the `:first-child` selector matches. A callout with no lead-in label still works — it just carries the tint alone.
+**Callout shape — do not use a side tab.** A thick colored border on one edge of a card (`border-left: 3px solid …`) is the single most recognizable tell of machine-generated UI, and the `impeccable` design hook flags it by name (`side-tab`). The convention above encodes the state two ways instead — a faint background tint and the state color on the callout's opening `<strong>` — inside a neutral hairline border on all four sides, which stays legible in both themes without the tell. Structure callouts as `<aside class="warning"><p><strong>Label.</strong> Body…</p></aside>` so the `:first-child` selector matches. A callout with no lead-in label keeps the tint but loses the labeled channel entirely, so use a lead-in label whenever the state actually needs to register.
 
 Notes:
 
@@ -205,7 +206,7 @@ When in doubt, run the artifact through a contrast checker (Chrome devtools → 
 ## Collapsibles and callouts
 
 - `<details><summary>` for long appendix lookups, FAQs, or "advanced" drill-downs that would bloat the main flow.
-- `<aside class="note">`, `<aside class="success">`, `<aside class="warning">`, `<aside class="error">` for in-context callouts. The neutral `note` class uses `--accent` for its left rule; the three state classes swap in `--success`, `--warning`, `--error` respectively. Place callouts where they matter, not in a separate "warnings" section.
+- `<aside class="note">`, `<aside class="success">`, `<aside class="warning">`, `<aside class="error">` for in-context callouts. The neutral `note` class needs no extra rule — the base `aside` styling is the neutral state. The three state classes tint the background to `--success-bg`, `--warning-bg`, `--error-bg` respectively, with the lead-in `<strong>` carrying the matching state color (see "Callout shape" above — no side tab). Place callouts where they matter, not in a separate "warnings" section.
 
 ## JavaScript
 
