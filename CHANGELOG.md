@@ -2,6 +2,18 @@
 
 All notable changes to the `toolkit` plugin are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`html-artifact` callout style** — replaced the `border-left: 3px solid`
+  side tab with a faint background tint and the state color on the callout's
+  lead-in `<strong>`, inside a neutral hairline border on all four sides. Adds
+  `--success-bg` / `--warning-bg` / `--error-bg` to both theme branches. Applied
+  to `references/example-dark-light.html` and to `plugin-audit/template.html`.
+- **Type-scale rule** — each heading size step must be at least 1.25× the next;
+  `h3`/`h4` separate by register, not by a third or fourth size.
+
 ## [0.7.0] - 2026-07-30
 
 ### Added
